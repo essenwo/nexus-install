@@ -151,50 +151,53 @@ verify_installation() {
     fi
 }
 
-# 启动Nexus节点
-start_nexus_node() {
-    print_step "启动Nexus Network节点"
-    echo ""
-    print_info "请访问 https://app.nexus.xyz 获取您的Node ID"
-    echo ""
+# 自动配置和启动
+auto_start() {
+    print_step "自动配置环境并启动Nexus"
     
-    # 获取Node ID
-    while true; do
-        read -p "请输入您的Node ID: " NODE_ID
-        if [[ -n "$NODE_ID" ]]; then
-            break
-        else
-            print_warning "Node ID不能为空，请重新输入"
-        fi
-    done
+    # 自动更新环境变量
+    source ~/.zshrc 2>/dev/null || true
+    source ~/.bash_profile 2>/dev/null || true
+    export PATH="$HOME/.cargo/bin:$HOME/.nexus:$PATH"
     
-    print_success "Node ID设置完成: $NODE_ID"
-    echo ""
-    print_info "正在启动Nexus Network节点..."
-    print_warning "节点将在前台运行，按Ctrl+C可停止"
-    echo ""
+    print_success "环境变量已自动配置"
     
-    # 尝试启动节点
-    if command -v nexus-network &> /dev/null; then
-        nexus-network start --node-id "$NODE_ID"
+    # 检查是否设置了Node ID环境变量
+    if [[ -n "$NEXUS_NODE_ID" ]]; then
+        NODE_ID="$NEXUS_NODE_ID"
+        print_success "使用环境变量Node ID: $NODE_ID"
     else
-        # 尝试使用完整路径
-        NEXUS_PATHS=(
-            "$HOME/.nexus/nexus-network"
-            "$HOME/.local/bin/nexus-network"
-            "/usr/local/bin/nexus-network"
-        )
+        print_step "Node ID配置"
+        print_info "请访问 https://app.nexus.xyz 获取您的Node ID"
+        echo ""
         
-        for path in "${NEXUS_PATHS[@]}"; do
-            if [[ -x "$path" ]]; then
-                "$path" start --node-id "$NODE_ID"
-                exit 0
+        while true; do
+            read -p "请输入您的Node ID（一次性配置）: " NODE_ID
+            if [[ -n "$NODE_ID" ]]; then
+                # 保存到环境变量文件
+                echo "export NEXUS_NODE_ID=\"$NODE_ID\"" >> ~/.zshrc
+                export NEXUS_NODE_ID="$NODE_ID"
+                break
+            else
+                print_warning "Node ID不能为空，请重新输入"
             fi
         done
-        
+    fi
+    
+    print_success "配置完成，正在启动Nexus Network..."
+    print_warning "程序将在前台运行，按Ctrl+C可停止"
+    echo ""
+    
+    # 查找并启动nexus-network
+    if command -v nexus-network &> /dev/null; then
+        nexus-network start --node-id "$NODE_ID"
+    elif [[ -x "$HOME/.nexus/nexus-network" ]]; then
+        "$HOME/.nexus/nexus-network" start --node-id "$NODE_ID"
+    elif [[ -x "$HOME/.local/bin/nexus-network" ]]; then
+        "$HOME/.local/bin/nexus-network" start --node-id "$NODE_ID"
+    else
         print_error "无法找到nexus-network命令"
-        print_info "请尝试重新启动终端，然后运行:"
-        echo "nexus-network start --node-id $NODE_ID"
+        print_info "请重新启动终端后运行: nexus-network start --node-id $NODE_ID"
     fi
 }
 
@@ -224,20 +227,11 @@ main() {
     verify_installation
     
     echo ""
-    print_step "🎉 安装完成！"
+    print_step "🎉 安装完成！开始自动配置..."
     echo ""
     
-    # 询问是否立即启动
-    read -p "是否现在启动Nexus节点？(y/N): " start_now
-    if [[ $start_now =~ ^[Yy]$ ]]; then
-        start_nexus_node
-    else
-        echo ""
-        print_info "稍后启动节点请运行："
-        echo "nexus-network start --node-id <your-node-id>"
-        echo ""
-        print_info "获取Node ID请访问: https://app.nexus.xyz"
-    fi
+    # 直接自动启动，不再询问
+    auto_start
 }
 
 main "$@"
