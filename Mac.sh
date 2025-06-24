@@ -2,7 +2,6 @@
 
 # =======================================================
 # Nexus Network CLI Mac 一键安装脚本
-# 适用于 macOS 系统
 # =======================================================
 
 set -e
@@ -25,6 +24,7 @@ show_banner() {
     echo ""
     print_step "========================================="
     print_step "   Nexus Network CLI Mac 一键安装"
+    print_step "   安装完成后自动启动"
     print_step "========================================="
     echo ""
 }
@@ -97,108 +97,86 @@ install_nexus_cli() {
     print_success "Nexus CLI安装完成"
 }
 
-# 刷新环境变量
-refresh_environment() {
-    print_info "刷新环境变量..."
+# 等待安装完成并自动配置
+wait_and_configure() {
+    print_info "等待安装完成..."
+    sleep 3
     
-    # 重新加载shell配置
-    if [[ $SHELL == *"zsh"* ]]; then
-        source ~/.zshrc 2>/dev/null || true
-        print_info "已重新加载zsh配置"
-    elif [[ $SHELL == *"bash"* ]]; then
-        source ~/.bashrc 2>/dev/null || true
-        print_info "已重新加载bash配置"
-    fi
+    # 自动更新环境变量
+    print_info "自动配置环境变量..."
+    source ~/.zshrc 2>/dev/null || true
+    source ~/.bash_profile 2>/dev/null || true
+    source ~/.cargo/env 2>/dev/null || true
     
-    # 确保各种环境变量都已设置
-    export PATH="$HOME/.cargo/bin:$PATH"
+    # 手动添加可能的路径
+    export PATH="$HOME/.cargo/bin:$HOME/.nexus:$HOME/.local/bin:$PATH"
     
     # 如果是Apple Silicon Mac，确保Homebrew路径
     if [[ -f /opt/homebrew/bin/brew ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
     fi
     
-    print_success "环境变量刷新完成"
+    print_success "环境变量配置完成"
 }
 
-# 验证安装
-verify_installation() {
-    print_info "验证安装..."
+# 自动启动Nexus
+auto_start_nexus() {
+    echo ""
+    print_step "🎉 安装完成！准备启动Nexus Network"
+    echo ""
     
     # 检查nexus-network命令是否可用
+    nexus_cmd=""
     if command -v nexus-network &> /dev/null; then
-        print_success "Nexus CLI验证成功"
-        return 0
+        nexus_cmd="nexus-network"
+    elif [[ -x "$HOME/.nexus/nexus-network" ]]; then
+        nexus_cmd="$HOME/.nexus/nexus-network"
+        export PATH="$HOME/.nexus:$PATH"
+    elif [[ -x "$HOME/.local/bin/nexus-network" ]]; then
+        nexus_cmd="$HOME/.local/bin/nexus-network"
+        export PATH="$HOME/.local/bin:$PATH"
     else
-        # 尝试查找nexus-network命令
-        NEXUS_PATHS=(
-            "$HOME/.nexus/nexus-network"
-            "$HOME/.local/bin/nexus-network"
-            "/usr/local/bin/nexus-network"
-        )
-        
-        for path in "${NEXUS_PATHS[@]}"; do
-            if [[ -x "$path" ]]; then
-                print_success "找到Nexus CLI: $path"
-                export PATH="$(dirname $path):$PATH"
-                return 0
-            fi
-        done
-        
-        print_warning "未找到nexus-network命令，但安装可能成功"
-        print_info "请手动检查或重新启动终端"
-        return 0
-    fi
-}
-
-# 自动配置和启动
-auto_start() {
-    print_step "自动配置环境并启动Nexus"
-    
-    # 自动更新环境变量
-    source ~/.zshrc 2>/dev/null || true
-    source ~/.bash_profile 2>/dev/null || true
-    export PATH="$HOME/.cargo/bin:$HOME/.nexus:$PATH"
-    
-    print_success "环境变量已自动配置"
-    
-    # 检查是否设置了Node ID环境变量
-    if [[ -n "$NEXUS_NODE_ID" ]]; then
-        NODE_ID="$NEXUS_NODE_ID"
-        print_success "使用环境变量Node ID: $NODE_ID"
-    else
-        print_step "Node ID配置"
-        print_info "请访问 https://app.nexus.xyz 获取您的Node ID"
-        echo ""
-        
-        while true; do
-            read -p "请输入您的Node ID（一次性配置）: " NODE_ID
-            if [[ -n "$NODE_ID" ]]; then
-                # 保存到环境变量文件
-                echo "export NEXUS_NODE_ID=\"$NODE_ID\"" >> ~/.zshrc
-                export NEXUS_NODE_ID="$NODE_ID"
-                break
-            else
-                print_warning "Node ID不能为空，请重新输入"
-            fi
-        done
+        print_warning "正在查找nexus-network命令..."
+        # 尝试查找
+        possible_paths=$(find ~ -name "nexus-network" -type f 2>/dev/null | head -1)
+        if [[ -n "$possible_paths" ]]; then
+            nexus_cmd="$possible_paths"
+            chmod +x "$nexus_cmd"
+        fi
     fi
     
-    print_success "配置完成，正在启动Nexus Network..."
+    if [[ -z "$nexus_cmd" ]]; then
+        print_error "未找到nexus-network命令"
+        print_info "请重新启动终端，然后手动运行："
+        echo "nexus-network start --node-id <your-node-id>"
+        return 1
+    fi
+    
+    print_success "找到Nexus命令: $nexus_cmd"
+    
+    # 获取Node ID
+    echo ""
+    print_step "配置Node ID"
+    print_info "请访问 https://app.nexus.xyz 获取您的Node ID"
+    echo ""
+    
+    while true; do
+        read -p "请输入您的Node ID: " NODE_ID
+        if [[ -n "$NODE_ID" ]]; then
+            break
+        else
+            print_warning "Node ID不能为空，请重新输入"
+        fi
+    done
+    
+    print_success "Node ID设置完成: $NODE_ID"
+    echo ""
+    print_info "正在启动Nexus Network..."
     print_warning "程序将在前台运行，按Ctrl+C可停止"
     echo ""
     
-    # 查找并启动nexus-network
-    if command -v nexus-network &> /dev/null; then
-        nexus-network start --node-id "$NODE_ID"
-    elif [[ -x "$HOME/.nexus/nexus-network" ]]; then
-        "$HOME/.nexus/nexus-network" start --node-id "$NODE_ID"
-    elif [[ -x "$HOME/.local/bin/nexus-network" ]]; then
-        "$HOME/.local/bin/nexus-network" start --node-id "$NODE_ID"
-    else
-        print_error "无法找到nexus-network命令"
-        print_info "请重新启动终端后运行: nexus-network start --node-id $NODE_ID"
-    fi
+    # 启动nexus-network
+    exec "$nexus_cmd" start --node-id "$NODE_ID"
 }
 
 # 错误处理
@@ -223,15 +201,8 @@ main() {
     install_protobuf
     install_rust
     install_nexus_cli
-    refresh_environment
-    verify_installation
-    
-    echo ""
-    print_step "🎉 安装完成！开始自动配置..."
-    echo ""
-    
-    # 直接自动启动，不再询问
-    auto_start
+    wait_and_configure
+    auto_start_nexus
 }
 
 main "$@"
