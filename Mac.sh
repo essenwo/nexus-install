@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# =======================================================
+# Nexus Network Mac 一键安装脚本（终极修复版）
+# 解决input和下载问题
+# =======================================================
+
 set -e
 
 RED='\033[0;31m'
@@ -38,11 +43,18 @@ if ! command -v rustc &> /dev/null; then
     source "$HOME/.cargo/env"
 fi
 
-# 安装Nexus CLI（使用官方方法）
+# 安装Nexus CLI（使用官方安装脚本）
 print_info "安装Nexus CLI..."
 
-# 直接使用官方安装命令，强制非交互
-echo "y" | curl https://cli.nexus.xyz/ | sh
+# 下载官方安装脚本到临时文件
+curl -s https://cli.nexus.xyz/ -o /tmp/nexus_install.sh
+chmod +x /tmp/nexus_install.sh
+
+# 自动回答yes运行安装脚本
+echo "y" | /tmp/nexus_install.sh
+
+# 清理
+rm -f /tmp/nexus_install.sh
 
 # 更新环境变量
 source ~/.zshrc 2>/dev/null || true
@@ -60,23 +72,26 @@ elif [[ -x "$HOME/.local/bin/nexus-network" ]]; then
 elif [[ -x "$HOME/.nexus/nexus-network" ]]; then
     nexus_cmd="$HOME/.nexus/nexus-network"
 else
-    echo "❌ 未找到nexus-network"
+    echo "❌ 未找到nexus-network命令"
+    echo "请手动运行: curl https://cli.nexus.xyz/ | sh"
     exit 1
 fi
 
-# 获取Node ID（真正等待用户输入）
 echo ""
-print_step "请输入Node ID（访问 https://app.nexus.xyz 获取）"
+print_step "请访问 https://app.nexus.xyz 获取您的Node ID"
 echo ""
 
-# 这次真正等待用户输入
+# 修复输入问题：重新打开TTY
+exec < /dev/tty
+
+# 获取Node ID
 while true; do
     echo -n "请输入您的Node ID: "
     read NODE_ID
     
     if [[ -n "$NODE_ID" && "$NODE_ID" != "" ]]; then
         echo ""
-        print_info "Node ID已设置: $NODE_ID"
+        print_success "Node ID已设置: $NODE_ID"
         break
     else
         echo "❌ Node ID不能为空，请重新输入"
